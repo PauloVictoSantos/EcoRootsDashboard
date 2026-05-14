@@ -1,8 +1,12 @@
+// app/api/analyze/route.ts
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
 export const maxDuration = 60
+
+// Tolerância de 5cm em cada eixo (posição vai de 0–54 em X e 0–120 em Y)
+const POSITION_TOLERANCE = 5
 
 export async function POST(request: Request) {
   try {
@@ -29,7 +33,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "image_base64 ou image_url é obrigatório" }, { status: 400 })
     }
 
-    // Prepara base64
+    // --- Prepara base64 ---
     let base64 = image_base64 ?? ""
     let detectedMime = mime_type ?? "image/jpeg"
 
@@ -43,6 +47,25 @@ export async function POST(request: Request) {
       if (match) { detectedMime = match[1]; base64 = match[2] }
     }
 
+    // --- Upload da imagem pro Supabase Storage ---
+    const supabase = await createClient()
+    let savedImageUrl: string | null = image_url ?? null
+
+    if (base64 && !image_url) {
+      const buffer = Buffer.from(base64, "base64")
+      const filename = `plants/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+
+      const { error: uploadError } = await supabase.storage
+        .from("plant-images")
+        .upload(filename, buffer, { contentType: detectedMime, upsert: false })
+
+      if (!uploadError) {
+        const { data: pub } = supabase.storage.from("plant-images").getPublicUrl(filename)
+        savedImageUrl = pub.publicUrl
+      }
+    }
+
+    // --- Gemini ---
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) return NextResponse.json({ error: "GEMINI_API_KEY não configurada" }, { status: 500 })
 
@@ -51,8 +74,8 @@ export async function POST(request: Request) {
 
     const contextData = `
 Dados dos sensores: ${sensors.length > 0 ? JSON.stringify(sensors) : "Nenhum sensor disponível"}
-Atuadores ativos: ${actuators.length > 0 ? JSON.stringify(actuators) : "Nenhum atuador disponível"}
-Posição no ambiente: x=${position_x}, y=${position_y}
+Atuadores: ${actuators.length > 0 ? JSON.stringify(actuators) : "Nenhum atuador disponível"}
+Posição na estufa (cm): x=${position_x}cm, y=${position_y}cm (estufa de 54cm x 120cm)
 `
 
     const prompt = `Você é um agrônomo especialista. Analise a imagem desta planta junto com os dados abaixo:
@@ -65,9 +88,11 @@ Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem \`\`\`) no formato:
   "species": "<nome científico>",
   "health_score": <número de 0 a 100>,
   "status": "healthy" | "warning" | "critical",
-  "problems": ["<problema 1>", "<problema 2>"],
-  "recommendations": ["<recomendação 1>", "<recomendação 2>"],
-  "summary": "<resumo de 2-3 frases em português considerando imagem, sensores e atuadores>"
+  "problems": ["<problema detalhado 1>", "<problema detalhado 2>"],
+  "recommendations": ["<recomendação acionável 1>", "<recomendação acionável 2>"],
+  "summary": "<análise completa de 3-4 frases em português considerando imagem, sensores, atuadores e posição na estufa>",
+  "growth_stage": "<estágio de crescimento: muda | vegetativo | floração | frutificação | maturação>",
+  "next_action": "<ação mais urgente a tomar agora>"
 }`
 
     const result = await model.generateContent([
@@ -90,6 +115,8 @@ Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem \`\`\`) no formato:
       problems?: string[]
       recommendations?: string[]
       summary?: string
+      growth_stage?: string
+      next_action?: string
     } = {}
 
     try {
@@ -98,33 +125,30 @@ Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem \`\`\`) no formato:
       parsed = { summary: cleaned, health_score: 70, problems: [], recommendations: [] }
     }
 
-    const supabase = await createClient()
-
-    // Verifica se já existe planta na mesma posição
-    const { data: existing } = await supabase
+    // --- Busca planta pela posição com tolerância ---
+    const { data: nearby } = await supabase
       .from("plants")
-      .select("id")
-      .eq("position_x", position_x)
-      .eq("position_y", position_y)
+      .select("id, position_x, position_y")
+      .gte("position_x", position_x - POSITION_TOLERANCE)
+      .lte("position_x", position_x + POSITION_TOLERANCE)
+      .gte("position_y", position_y - POSITION_TOLERANCE)
+      .lte("position_y", position_y + POSITION_TOLERANCE)
+      .limit(1)
       .single()
 
     let plantId: string
+    const isNew = !nearby
 
-    if (existing) {
-      // Atualiza planta existente
-      plantId = existing.id
-      await supabase
-        .from("plants")
-        .update({
-          name: parsed.name ?? "Planta",
-          species: parsed.species ?? null,
-          health_score: parsed.health_score ?? 100,
-          status: parsed.status ?? "healthy",
-          image_url: image_url ?? null,
-        })
-        .eq("id", plantId)
+    if (nearby) {
+      plantId = nearby.id
+      await supabase.from("plants").update({
+        name: parsed.name ?? "Planta",
+        species: parsed.species ?? null,
+        health_score: parsed.health_score ?? 100,
+        status: parsed.status ?? "healthy",
+        image_url: savedImageUrl,
+      }).eq("id", plantId)
     } else {
-      // Cria nova planta
       const { data: newPlant, error: plantError } = await supabase
         .from("plants")
         .insert({
@@ -134,7 +158,7 @@ Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem \`\`\`) no formato:
           position_y,
           health_score: parsed.health_score ?? 100,
           status: parsed.status ?? "healthy",
-          image_url: image_url ?? null,
+          image_url: savedImageUrl,
         })
         .select()
         .single()
@@ -143,7 +167,7 @@ Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem \`\`\`) no formato:
       plantId = newPlant.id
     }
 
-    // Salva sensores
+    // --- Sensores ---
     if (sensors.length > 0) {
       await supabase.from("sensors").insert(
         sensors.map((s) => ({
@@ -155,25 +179,38 @@ Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem \`\`\`) no formato:
       )
     }
 
-    // Salva atuadores (upsert por nome+planta)
-    if (actuators.length > 0) {
-      await supabase.from("actuators").insert(
-        actuators.map((a) => ({
+    // --- Atuadores: upsert por name + plant_id ---
+    for (const a of actuators) {
+      const { data: existing } = await supabase
+        .from("actuators")
+        .select("id")
+        .eq("plant_id", plantId)
+        .eq("name", a.name)
+        .single()
+
+      if (existing) {
+        await supabase.from("actuators").update({
+          type: a.type,
+          status: a.status,
+          consumption: a.consumption,
+        }).eq("id", existing.id)
+      } else {
+        await supabase.from("actuators").insert({
           plant_id: plantId,
           name: a.name,
           type: a.type,
           status: a.status,
           consumption: a.consumption,
-        }))
-      )
+        })
+      }
     }
 
-    // Salva relatório da IA
+    // --- Relatório IA ---
     const { data: report, error: reportError } = await supabase
       .from("ai_reports")
       .insert({
         plant_id: plantId,
-        image_url: image_url ?? null,
+        image_url: savedImageUrl,
         health_score: parsed.health_score ?? null,
         problems: parsed.problems ?? [],
         recommendations: parsed.recommendations ?? [],
@@ -187,7 +224,8 @@ Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem \`\`\`) no formato:
 
     return NextResponse.json({
       plant_id: plantId,
-      is_new_plant: !existing,
+      is_new_plant: isNew,
+      image_url: savedImageUrl,
       report,
       analysis: parsed,
     })
