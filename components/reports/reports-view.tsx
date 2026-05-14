@@ -33,21 +33,6 @@ const SENSOR_GROUPS: { label: string; types: string[]; unit: string; color: stri
   { label: "Pressão", types: ["pressao"], unit: "hPa", color: "#fb7185" },
 ]
 
-export type RawResponse = {
-  next_action?: string
-  growth_stage?: string
-  status?: string
-}
-export interface AIReport {
-  id: string
-  created_at: string
-  health_score?: number
-  summary?: string
-  problems: string[]
-  recommendations: string[]
-
-  raw_response?: RawResponse
-}
 function getSensorGroup(type: string) {
   return SENSOR_GROUPS.find((g) => g.types.includes(type.toLowerCase()))
 }

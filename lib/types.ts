@@ -29,14 +29,18 @@ export type Actuator = {
   recorded_at: string
 }
 
-export type AIReport = {
+export type RawResponse = {
+  next_action?: string
+  growth_stage?: string
+  status?: string
+}
+export interface AIReport {
   id: string
-  plant_id: string | null
-  image_url: string | null
-  health_score: number | null
+  created_at: string
+  health_score?: number
+  summary?: string
   problems: string[]
   recommendations: string[]
-  summary: string | null
-  raw_response: unknown
-  created_at: string
+
+  raw_response?: RawResponse
 }
