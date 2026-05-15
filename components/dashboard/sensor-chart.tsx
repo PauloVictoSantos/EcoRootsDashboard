@@ -1,9 +1,19 @@
 "use client"
 
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import type { Sensor } from "@/lib/types"
 
-export function SensorChart({ data, type, unit }: { data: Sensor[]; type: string; unit?: string }) {
+export function SensorChart({
+  data,
+  type,
+  unit,
+  referenceLines,
+}: {
+  data: Sensor[]
+  type: string
+  unit?: string
+  referenceLines?: { value: number; label: string; color?: string }[]
+}) {
   const series = data
     .filter((s) => s.type === type)
     .slice(0, 30)
@@ -35,6 +45,15 @@ export function SensorChart({ data, type, unit }: { data: Sensor[]; type: string
             }}
             formatter={(v: number) => [`${v}${unit ? ` ${unit}` : ""}`, type]}
           />
+          {referenceLines?.map((rl) => (
+            <ReferenceLine
+              key={rl.value}
+              y={rl.value}
+              stroke={rl.color ?? "var(--color-muted-foreground)"}
+              strokeDasharray="4 4"
+              label={{ value: rl.label, fontSize: 10, fill: rl.color ?? "var(--color-muted-foreground)", position: "insideTopRight" }}
+            />
+          ))}
           <Area type="monotone" dataKey="value" stroke="var(--color-primary)" strokeWidth={2} fill={`url(#grad-${type})`} />
         </AreaChart>
       </ResponsiveContainer>

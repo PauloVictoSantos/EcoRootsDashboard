@@ -1,13 +1,26 @@
+export interface PlantHistory {
+  day: number
+  health_score: number
+}
+
 export type Plant = {
   id: string
   name: string
   species: string | null
+
   position_x: number
   position_y: number
+
   image_url: string | null
+
   status: string
   health_score: number
+
   created_at: string
+
+  history?: PlantHistory[]
+
+  ai_reports?: AIReport[]
 }
 
 export type Sensor = {
@@ -34,6 +47,7 @@ export type RawResponse = {
   growth_stage?: string
   status?: string
 }
+
 export interface AIReport {
   id: string
   created_at: string
