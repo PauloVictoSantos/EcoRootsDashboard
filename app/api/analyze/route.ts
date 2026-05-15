@@ -21,9 +21,14 @@ async function toJpeg(buf: Buffer): Promise<Buffer> {
   const fmt = detectFormat(buf)
 
   if (fmt === "raw") {
-    // Grayscale 160×120 (19200 bytes) vindo direto do ESP32
+    const size = buf.length
+    let width = 160, height = 120
+    if (size === 80 * 60)  { width = 80;  height = 60  }
+    if (size === 160 * 120){ width = 160; height = 120 }
+    if (size === 320 * 240){ width = 320; height = 240 }
+  
     return sharp(buf, {
-      raw: { width: 160, height: 120, channels: 1 },
+      raw: { width, height, channels: 1 },
     })
       .jpeg({ quality: 85 })
       .toBuffer()
