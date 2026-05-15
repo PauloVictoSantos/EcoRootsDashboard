@@ -24,13 +24,11 @@ const PERIOD_LABELS: Record<Period, string> = {
   "7d": "7d", "30d": "30d", "90d": "90d", all: "Tudo",
 }
 
-// Grupos de sensores por unidade para gráficos separados
 const SENSOR_GROUPS: { label: string; types: string[]; unit: string; color: string }[] = [
   { label: "Umidade", types: ["umidade", "umidade_solo", "umidade_ar"], unit: "%", color: "#22d3ee" },
   { label: "Temperatura", types: ["temperatura"], unit: "°C", color: "#f97316" },
   { label: "Luminosidade", types: ["luminosidade", "lux", "uv"], unit: "lux", color: "#facc15" },
-  { label: "pH", types: ["ph", "ph_solo"], unit: "pH", color: "#a78bfa" },
-  { label: "Pressão", types: ["pressao"], unit: "hPa", color: "#fb7185" },
+
 ]
 
 function getSensorGroup(type: string) {
