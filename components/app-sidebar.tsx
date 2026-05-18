@@ -17,10 +17,10 @@ export function AppSidebar() {
     <aside className="hidden md:flex flex-col w-60 shrink-0 border-r border-sidebar-border bg-sidebar">
       <div className="flex items-center gap-2 px-5 py-5 border-b border-sidebar-border">
         <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <Leaf className="h-5 w-5" />
+          <img src="/logoecoroots.jpg" alt="" />
         </div>
-        <div className="flex flex-col">
-          <span className="text-sm font-semibold leading-tight">Amazonas</span>
+        <div className="flex flex-col"> 
+          <span className="text-sm font-semibold leading-tight">Ecoroots</span>
           <span className="text-xs text-muted-foreground leading-tight">Monitor de plantas</span>
         </div>
       </div>

@@ -274,12 +274,6 @@ export function DashboardView() {
         />
       </section>
 
-      <section>
-        <PlantDevelopmentChart
-          data={developmentData}
-        />
-      </section>
-
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
